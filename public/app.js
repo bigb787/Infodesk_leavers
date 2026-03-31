@@ -72,7 +72,7 @@ function renderChecklist() {
       ? `<a href="${escapeHtml(entry.evidence_path)}" target="_blank">Open file</a>`
       : '—';
     const locationHtml = entry.evidence_link
-      ? `<a href="${escapeHtml(entry.evidence_link)}" target="_blank">${escapeHtml(entry.evidence_link)}</a>`
+      ? `<a href="${escapeHtml(entry.evidence_link)}" target="_blank">Open stored evidence link</a>`
       : (allowsEvidence ? 'Upload a file to generate the stored location link.' : '—');
     return `
       <tr data-item-key="${escapeHtml(item.item_key)}">

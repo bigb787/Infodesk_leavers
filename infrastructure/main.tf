@@ -45,6 +45,7 @@ REPO_URL="${var.app_repo_url}"
 REPO_BRANCH="${var.app_repo_branch}"
 APP_PORT="${var.app_port}"
 BACKUP_BUCKET="${local.backup_bucket}"
+APP_URL="http://$(curl -fsSL http://169.254.169.254/latest/meta-data/public-ipv4 || echo 127.0.0.1)"
 
 apt-get update
 apt-get install -y ca-certificates curl gnupg git nginx build-essential python3 sqlite3 gzip unzip
@@ -64,7 +65,7 @@ cd "$APP_DIR"
 npm install --omit=dev || npm install
 mkdir -p uploads/evidence data
 pm2 delete infodesk-leavers || true
-PORT="$APP_PORT" pm2 start npm --name infodesk-leavers -- start
+PORT="$APP_PORT" AWS_REGION="${var.aws_region}" BACKUP_BUCKET="$BACKUP_BUCKET" EVIDENCE_BUCKET="$BACKUP_BUCKET" APP_BASE_URL="$APP_URL" pm2 start npm --name infodesk-leavers -- start
 pm2 save
 env PATH="$PATH:/usr/bin" pm2 startup systemd -u root --hp /root || true
 
@@ -182,8 +183,11 @@ resource "aws_iam_role_policy" "ec2_backup_s3_policy" {
     Statement = [
       {
         Effect = "Allow"
-        Action = ["s3:PutObject", "s3:AbortMultipartUpload"]
-        Resource = "arn:aws:s3:::${local.backup_bucket}/sqlite/*"
+        Action = ["s3:PutObject", "s3:AbortMultipartUpload", "s3:GetObject"]
+        Resource = [
+          "arn:aws:s3:::${local.backup_bucket}/sqlite/*",
+          "arn:aws:s3:::${local.backup_bucket}/evidence/*"
+        ]
       },
       {
         Effect = "Allow"

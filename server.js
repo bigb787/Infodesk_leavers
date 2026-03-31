@@ -1,4 +1,5 @@
 const express = require('express');
+const { GetObjectCommand, PutObjectCommand, S3Client } = require('@aws-sdk/client-s3');
 const ExcelJS = require('exceljs');
 const fs = require('fs');
 const multer = require('multer');
@@ -8,9 +9,12 @@ const { db, insertAuditTrail, CHECKLIST_ITEMS } = require('./database');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const HARDWARE_EVIDENCE_KEY = 'hardware_evidence_collected';
+const AWS_REGION = process.env.AWS_REGION || 'us-east-1';
+const EVIDENCE_BUCKET = process.env.EVIDENCE_BUCKET || process.env.BACKUP_BUCKET || '';
 
 const uploadsDir = path.join(__dirname, 'uploads', 'evidence');
 fs.mkdirSync(uploadsDir, { recursive: true });
+const s3 = new S3Client({ region: AWS_REGION });
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadsDir),
@@ -43,6 +47,16 @@ function getLeaverEntries(leaverId) {
     WHERE e.leaver_id = ?
     ORDER BY c.display_order
   `).all(leaverId);
+}
+
+function getChecklistEntry(leaverId, itemKey) {
+  return db.prepare(`
+    SELECT e.*, c.item_key, c.item_label, c.display_order
+    FROM leaver_checklist_entries e
+    JOIN checklist_items c ON c.id = e.checklist_item_id
+    WHERE e.leaver_id = ? AND c.item_key = ?
+    LIMIT 1
+  `).get(leaverId, itemKey);
 }
 
 function buildLeaverPayload(leaver) {
@@ -192,6 +206,7 @@ app.delete('/api/leavers/:id', (req, res) => {
 });
 
 app.post('/api/leavers/:id/evidence', upload.single('evidence'), (req, res) => {
+  Promise.resolve().then(async () => {
   const id = parseInt(req.params.id, 10);
   if (!Number.isInteger(id)) return res.status(400).json({ error: 'invalid id' });
   if (!getLeaverById(id)) return res.status(404).json({ error: 'record not found' });
@@ -203,14 +218,62 @@ app.post('/api/leavers/:id/evidence', upload.single('evidence'), (req, res) => {
     return res.status(400).json({ error: 'file upload is allowed only for Evidence for Hardware Collected Back' });
   }
   if (!req.file) return res.status(400).json({ error: 'evidence file is required' });
+  if (!EVIDENCE_BUCKET) return res.status(500).json({ error: 'evidence bucket is not configured' });
 
-  const evidencePath = `/uploads/evidence/${req.file.filename}`;
+  const objectKey = `evidence/${id}/${req.file.filename}`;
+  const fileBuffer = fs.readFileSync(req.file.path);
+  await s3.send(new PutObjectCommand({
+    Bucket: EVIDENCE_BUCKET,
+    Key: objectKey,
+    Body: fileBuffer,
+    ContentType: req.file.mimetype || 'application/octet-stream',
+  }));
+  fs.unlinkSync(req.file.path);
+  const evidencePath = objectKey;
+  const relativeEvidenceLink = `/api/leavers/${id}/evidence/${HARDWARE_EVIDENCE_KEY}/file`;
+  const evidenceLink = `${req.protocol}://${req.get('host')}${relativeEvidenceLink}`;
   upsertChecklistEntries(id, [{
     item_key: itemKey,
     evidence_path: evidencePath,
-    evidence_link: evidencePath,
+    evidence_link: evidenceLink,
   }]);
-  res.json({ ok: true, evidence_path: evidencePath, evidence_link: evidencePath });
+  res.json({ ok: true, evidence_path: evidencePath, evidence_link: evidenceLink });
+  }).catch((err) => {
+    if (req.file?.path && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    console.error(err);
+    res.status(500).json({ error: 'failed to upload evidence to s3' });
+  });
+});
+
+app.get('/api/leavers/:id/evidence/:itemKey/file', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'invalid id' });
+  const itemKey = String(req.params.itemKey || '').trim();
+  if (itemKey !== HARDWARE_EVIDENCE_KEY) {
+    return res.status(400).json({ error: 'invalid evidence item' });
+  }
+  if (!EVIDENCE_BUCKET) return res.status(500).json({ error: 'evidence bucket is not configured' });
+
+  const entry = getChecklistEntry(id, itemKey);
+  if (!entry?.evidence_path) {
+    return res.status(404).json({ error: 'evidence file not found' });
+  }
+
+  try {
+    const result = await s3.send(new GetObjectCommand({
+      Bucket: EVIDENCE_BUCKET,
+      Key: entry.evidence_path,
+    }));
+    res.setHeader('Content-Type', result.ContentType || 'application/octet-stream');
+    const fileName = path.basename(entry.evidence_path);
+    res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
+    result.Body.pipe(res);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'failed to read evidence from s3' });
+  }
 });
 
 app.get('/api/export/leavers.xlsx', async (_req, res) => {
