@@ -4,6 +4,7 @@ let checklistItems = [];
 let leavers = [];
 let selectedLeaverId = null;
 let editingLeaverId = null;
+const HARDWARE_EVIDENCE_KEY = 'hardware_evidence_collected';
 
 async function fetchJSON(url, opts) {
   const res = await fetch(url, opts);
@@ -66,9 +67,13 @@ function renderChecklist() {
   const entriesByKey = new Map((leaver?.checklist || []).map((entry) => [entry.item_key, entry]));
   $('#checklist-rows').innerHTML = checklistItems.map((item) => {
     const entry = entriesByKey.get(item.item_key) || {};
+    const allowsEvidence = item.item_key === HARDWARE_EVIDENCE_KEY;
     const fileHtml = entry.evidence_path
       ? `<a href="${escapeHtml(entry.evidence_path)}" target="_blank">Open file</a>`
       : '—';
+    const locationHtml = entry.evidence_link
+      ? `<a href="${escapeHtml(entry.evidence_link)}" target="_blank">${escapeHtml(entry.evidence_link)}</a>`
+      : (allowsEvidence ? 'Upload a file to generate the stored location link.' : '—');
     return `
       <tr data-item-key="${escapeHtml(item.item_key)}">
         <td>${escapeHtml(item.item_label)}</td>
@@ -80,12 +85,13 @@ function renderChecklist() {
             <option value="NA"${entry.access_removed === 'NA' ? ' selected' : ''}>NA</option>
           </select>
         </td>
-        <td><input class="entry-link" value="${escapeHtml(entry.evidence_link || '')}" placeholder="https://..." /></td>
+        <td>${locationHtml}<input class="entry-link" type="hidden" value="${escapeHtml(entry.evidence_link || '')}" /></td>
         <td>${fileHtml}</td>
         <td><textarea class="entry-notes">${escapeHtml(entry.notes || '')}</textarea></td>
         <td>
-          <input class="entry-file" type="file" />
-          <button class="btn secondary upload-btn" type="button">Upload</button>
+          ${allowsEvidence
+            ? '<input class="entry-file" type="file" /><button class="btn secondary upload-btn" type="button">Upload</button>'
+            : '—'}
         </td>
       </tr>
     `;
@@ -231,6 +237,10 @@ async function onUploadEvidence(ev) {
     return;
   }
   const row = ev.target.closest('tr');
+  if (row.getAttribute('data-item-key') !== HARDWARE_EVIDENCE_KEY) {
+    alert('Upload is available only for Evidence for Hardware Collected Back.');
+    return;
+  }
   const fileInput = row.querySelector('.entry-file');
   if (!fileInput.files.length) {
     alert('Choose a file first.');
@@ -241,10 +251,11 @@ async function onUploadEvidence(ev) {
   formData.append('evidence', fileInput.files[0]);
 
   try {
-    await fetchJSON(`/api/leavers/${leaver.id}/evidence`, {
+    const result = await fetchJSON(`/api/leavers/${leaver.id}/evidence`, {
       method: 'POST',
       body: formData,
     });
+    row.querySelector('.entry-link').value = result.evidence_link || '';
     await loadData();
   } catch (err) {
     alert(err.message);

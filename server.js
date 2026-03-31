@@ -7,6 +7,7 @@ const { db, insertAuditTrail, CHECKLIST_ITEMS } = require('./database');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const HARDWARE_EVIDENCE_KEY = 'hardware_evidence_collected';
 
 const uploadsDir = path.join(__dirname, 'uploads', 'evidence');
 fs.mkdirSync(uploadsDir, { recursive: true });
@@ -86,12 +87,13 @@ function upsertChecklistEntries(leaverId, entries) {
   entries.forEach((entry) => {
     const item = validItems.get(String(entry.item_key || '').trim());
     if (!item) return;
+    const allowsEvidence = item.item_key === HARDWARE_EVIDENCE_KEY;
     stmt.run({
       leaver_id: leaverId,
       checklist_item_id: item.id,
       access_removed: entry.access_removed == null || entry.access_removed === '' ? null : String(entry.access_removed),
-      evidence_link: entry.evidence_link ? String(entry.evidence_link).trim() : null,
-      evidence_path: entry.evidence_path ? String(entry.evidence_path).trim() : null,
+      evidence_link: allowsEvidence && entry.evidence_link ? String(entry.evidence_link).trim() : null,
+      evidence_path: allowsEvidence && entry.evidence_path ? String(entry.evidence_path).trim() : null,
       notes: entry.notes ? String(entry.notes).trim() : null,
     });
   });
@@ -197,11 +199,18 @@ app.post('/api/leavers/:id/evidence', upload.single('evidence'), (req, res) => {
   const itemKey = String(req.body?.item_key || '').trim();
   const item = getChecklistItems().find((row) => row.item_key === itemKey);
   if (!item) return res.status(400).json({ error: 'invalid item_key' });
+  if (item.item_key !== HARDWARE_EVIDENCE_KEY) {
+    return res.status(400).json({ error: 'file upload is allowed only for Evidence for Hardware Collected Back' });
+  }
   if (!req.file) return res.status(400).json({ error: 'evidence file is required' });
 
   const evidencePath = `/uploads/evidence/${req.file.filename}`;
-  upsertChecklistEntries(id, [{ item_key: itemKey, evidence_path: evidencePath }]);
-  res.json({ ok: true, evidence_path: evidencePath });
+  upsertChecklistEntries(id, [{
+    item_key: itemKey,
+    evidence_path: evidencePath,
+    evidence_link: evidencePath,
+  }]);
+  res.json({ ok: true, evidence_path: evidencePath, evidence_link: evidencePath });
 });
 
 app.get('/api/export/leavers.xlsx', async (_req, res) => {
