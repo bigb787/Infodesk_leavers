@@ -103,9 +103,9 @@ if [ ! -f "\$DB_PATH" ]; then
   echo "Database file not found: \$DB_PATH"
   exit 1
 fi
-sqlite3 "\$DB_PATH" ".backup '\$TMP_DIR/infodesk_leavers_\${STAMP}.sqlite'"
-gzip -f "\$TMP_DIR/infodesk_leavers_\${STAMP}.sqlite"
-aws s3 cp "\$TMP_DIR/infodesk_leavers_\${STAMP}.sqlite.gz" "s3://$BACKUP_BUCKET/sqlite/infodesk_leavers_\${STAMP}.sqlite.gz"
+sqlite3 "\$DB_PATH" ".backup '\$TMP_DIR/infodesk_leavers_$${STAMP}.sqlite'"
+gzip -f "\$TMP_DIR/infodesk_leavers_$${STAMP}.sqlite"
+aws s3 cp "\$TMP_DIR/infodesk_leavers_$${STAMP}.sqlite.gz" "s3://$BACKUP_BUCKET/sqlite/infodesk_leavers_$${STAMP}.sqlite.gz"
 rm -f "\$TMP_DIR"/infodesk_leavers_*.sqlite.gz
 BKP
 

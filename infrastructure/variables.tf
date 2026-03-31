@@ -5,7 +5,7 @@ variable "aws_region" {
 
 variable "aws_profile" {
   type    = string
-  default = "my-aws-project"
+  default = "my-asset-project"
 }
 
 variable "instance_type" {
