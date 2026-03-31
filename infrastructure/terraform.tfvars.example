@@ -1,0 +1,9 @@
+aws_region          = "ap-south-1"
+aws_profile         = "my-aws-project"
+key_name            = "replace-with-your-ec2-keypair"
+allowed_ssh_cidr    = "0.0.0.0/0"
+allowed_app_cidr    = "0.0.0.0/0"
+app_repo_url        = "https://github.com/bigb787/Infodesk_leavers.git"
+app_repo_branch     = "main"
+backup_bucket_name  = null
+backup_retention_days = 30

@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Infodesk Leavers Register</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="header">
+    <h1>Infodesk Leavers Register</h1>
+    <p class="sub">Track leavers, access removal checkpoints, evidence uploads, reference links, audit history, and Excel export.</p>
+    <div class="auth-bar">
+      <a class="btn secondary" href="/api/export/leavers.xlsx">Export to Excel</a>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="card full-width">
+      <h2>Leaver Record</h2>
+      <form id="leaver-form" class="form-grid">
+        <label>Employee Name
+          <input name="employee_name" id="employee-name" required />
+        </label>
+        <label>Date of Leaving
+          <input name="date_of_leaving" id="date-of-leaving" type="date" required />
+        </label>
+        <label>Department
+          <input name="department" id="department" />
+        </label>
+        <label>Line Manager
+          <input name="line_manager" id="line-manager" />
+        </label>
+        <div class="form-actions-bar">
+          <button type="submit" class="btn" id="save-btn">Save Record</button>
+          <button type="button" class="btn secondary" id="clear-btn">Clear Form</button>
+          <span class="form-help">Save the employee first, then manage checklist evidence below.</span>
+        </div>
+      </form>
+    </section>
+
+    <section class="card full-width">
+      <h2>Leavers</h2>
+      <p class="hint">Use Edit to load a record back into the form. Use Manage Checklist to update access removal, evidence link, notes, and file upload for each header.</p>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Actions</th>
+              <th>Employee Name</th>
+              <th>Date of Leaving</th>
+              <th>Department</th>
+              <th>Line Manager</th>
+            </tr>
+          </thead>
+          <tbody id="leaver-rows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card full-width">
+      <h2 id="checklist-title">Checklist Details</h2>
+      <p class="hint">Select Manage Checklist on any employee row to update the full offboarding checklist.</p>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Header</th>
+              <th>Access Removed?</th>
+              <th>Evidence Link</th>
+              <th>Evidence File</th>
+              <th>Notes</th>
+              <th>Upload</th>
+            </tr>
+          </thead>
+          <tbody id="checklist-rows"></tbody>
+        </table>
+      </div>
+      <div class="form-actions-bar top-gap">
+        <button type="button" class="btn" id="save-checklist-btn">Save Checklist</button>
+      </div>
+    </section>
+
+    <section class="card full-width">
+      <details id="history-panel">
+        <summary>Audit History</summary>
+        <ul id="audit-list" class="audit"></ul>
+      </details>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

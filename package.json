@@ -1,0 +1,19 @@
+{
+  "name": "infodesk-leavers",
+  "version": "1.0.0",
+  "description": "Infodesk leavers register with evidence tracking, SQLite, Excel export, and AWS deployment",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.7.0",
+    "exceljs": "^4.4.0",
+    "express": "^4.21.2",
+    "multer": "^2.0.2"
+  }
+}
