@@ -5,6 +5,7 @@ let leavers = [];
 let selectedLeaverId = null;
 let editingLeaverId = null;
 const HARDWARE_EVIDENCE_KEY = 'hardware_evidence_collected';
+const COMMUNICATION_TICKET_KEY = 'communication_ticket';
 
 async function fetchJSON(url, opts) {
   const res = await fetch(url, opts);
@@ -68,6 +69,7 @@ function renderChecklist() {
   $('#checklist-rows').innerHTML = checklistItems.map((item) => {
     const entry = entriesByKey.get(item.item_key) || {};
     const allowsEvidence = item.item_key === HARDWARE_EVIDENCE_KEY;
+    const usesTextAccess = item.item_key === COMMUNICATION_TICKET_KEY;
     const fileHtml = entry.evidence_path
       ? `<a href="${escapeHtml(entry.evidence_path)}" target="_blank">Open file</a>`
       : '—';
@@ -78,12 +80,14 @@ function renderChecklist() {
       <tr data-item-key="${escapeHtml(item.item_key)}">
         <td>${escapeHtml(item.item_label)}</td>
         <td>
-          <select class="entry-access">
+          ${usesTextAccess
+            ? `<input class="entry-access" value="${escapeHtml(entry.access_removed || '')}" placeholder="Enter ticket or communication text" />`
+            : `<select class="entry-access">
             <option value="">Select</option>
             <option value="Yes"${entry.access_removed === 'Yes' ? ' selected' : ''}>Yes</option>
             <option value="No"${entry.access_removed === 'No' ? ' selected' : ''}>No</option>
             <option value="NA"${entry.access_removed === 'NA' ? ' selected' : ''}>NA</option>
-          </select>
+          </select>`}
         </td>
         <td>${locationHtml}<input class="entry-link" type="hidden" value="${escapeHtml(entry.evidence_link || '')}" /></td>
         <td>${fileHtml}</td>
