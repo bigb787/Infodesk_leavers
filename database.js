@@ -14,12 +14,12 @@ const CHECKLIST_ITEMS = [
   { key: 'email_address', label: 'Email Address' },
   { key: 'email_groups', label: 'Email Groups' },
   { key: 'infodesk_qa_dev', label: 'InfoDesk QA/Dev' },
-  { key: 'infodesk_v7', label: 'InfoDesk V7' },
+  { key: 'infodesk_v7', label: 'Infodesk Prod' },
   { key: 'jira_and_wiki', label: 'JIRA and Wiki' },
   { key: 'ms_office', label: 'MS Office' },
   { key: 'atlas_mongo_access', label: 'Mongo Access' },
-  { key: 'aws', label: 'AWS' },
-  { key: 'azure', label: 'Azure' },
+  { key: 'aws', label: 'Azure Infodesk' },
+  { key: 'azure', label: 'Azure WN' },
   { key: 'infodesk_vpn', label: 'InfoDesk VPN' },
   { key: 'wn_vpn', label: 'WN VPN' },
   { key: 'azure_devops', label: 'Azure Devops' },
@@ -89,8 +89,13 @@ function seedChecklistItems() {
       item_label = excluded.item_label,
       display_order = excluded.display_order
   `);
+  const deleteRemoved = db.prepare(`
+    DELETE FROM checklist_items
+    WHERE item_key NOT IN (${CHECKLIST_ITEMS.map(() => '?').join(', ')})
+  `);
 
   const tx = db.transaction(() => {
+    deleteRemoved.run(...CHECKLIST_ITEMS.map((item) => item.key));
     CHECKLIST_ITEMS.forEach((item, index) => {
       insert.run(item.key, item.label, index + 1);
     });
