@@ -40,6 +40,15 @@ function getLeaverById(id) {
   return db.prepare('SELECT * FROM leavers WHERE id = ?').get(id);
 }
 
+function getLeaverByIdentity(employeeName, dateOfLeaving) {
+  return db.prepare(`
+    SELECT * FROM leavers
+    WHERE employee_name = ? AND date_of_leaving = ?
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(employeeName, dateOfLeaving);
+}
+
 function getLeaverEntries(leaverId) {
   return db.prepare(`
     SELECT e.*, c.item_key, c.item_label, c.display_order
@@ -140,7 +149,7 @@ function upsertChecklistEntries(leaverId, entries) {
     ON CONFLICT(leaver_id, checklist_item_id) DO UPDATE SET
       access_removed = excluded.access_removed,
       evidence_link = excluded.evidence_link,
-      evidence_path = COALESCE(excluded.evidence_path, leaver_checklist_entries.evidence_path),
+      evidence_path = excluded.evidence_path,
       notes = excluded.notes,
       updated_at = datetime('now')
   `);
@@ -327,19 +336,39 @@ app.post('/api/import/leavers', upload.single('file'), async (req, res) => {
           throw new Error(`Row ${rowNumber}: ${base.error}`);
         }
 
-        const info = db.prepare(`
-          INSERT INTO leavers (employee_name, date_of_leaving, department, line_manager)
-          VALUES (@employee_name, @date_of_leaving, @department, @line_manager)
-        `).run(base);
-        const leaverId = info.lastInsertRowid;
+        const existing = getLeaverByIdentity(base.employee_name, base.date_of_leaving);
+        let leaverId;
+        let actionType;
+        let previousValue = null;
+
+        if (existing) {
+          previousValue = JSON.stringify(buildLeaverPayload(existing));
+          db.prepare(`
+            UPDATE leavers
+            SET department = @department,
+                line_manager = @line_manager,
+                updated_at = datetime('now')
+            WHERE id = @id
+          `).run({ ...base, id: existing.id });
+          leaverId = existing.id;
+          actionType = 'UPDATE';
+        } else {
+          const info = db.prepare(`
+            INSERT INTO leavers (employee_name, date_of_leaving, department, line_manager)
+            VALUES (@employee_name, @date_of_leaving, @department, @line_manager)
+          `).run(base);
+          leaverId = info.lastInsertRowid;
+          actionType = 'CREATE';
+        }
+
         const checklist = normalizeImportedChecklist(req, leaverId, record);
         upsertChecklistEntries(leaverId, checklist);
         const payload = buildLeaverPayload(getLeaverById(leaverId));
         insertAuditTrail({
           entity_table: 'leavers',
           entity_id: leaverId,
-          action_type: 'CREATE',
-          previous_value: null,
+          action_type: actionType,
+          previous_value: previousValue,
           new_value: JSON.stringify(payload),
           changed_by: 'import',
         });
