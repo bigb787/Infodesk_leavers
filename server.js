@@ -108,6 +108,8 @@ function normalizeImportedChecklist(req, leaverId, row) {
       }
       if (evidencePath) {
         evidenceLink = buildEvidenceLinkForLeaver(req, leaverId);
+      } else {
+        evidenceLink = null;
       }
     } else {
       evidenceLink = null;
@@ -400,12 +402,14 @@ app.get('/api/export/leavers.xlsx', async (_req, res) => {
   ];
 
   CHECKLIST_ITEMS.forEach((item) => {
-    columns.push({ header: `${item.label} - Access Removed`, key: `${item.key}_access_removed`, width: 18 });
     if (item.key === HARDWARE_EVIDENCE_KEY) {
+      columns.push({ header: `${item.label} - Access Removed`, key: `${item.key}_access_removed`, width: 18 });
       columns.push({ header: `${item.label} - Evidence Link`, key: `${item.key}_evidence_link`, width: 26 });
       columns.push({ header: `${item.label} - Evidence File`, key: `${item.key}_evidence_path`, width: 26 });
+      columns.push({ header: `${item.label} - Notes`, key: `${item.key}_notes`, width: 24 });
+    } else {
+      columns.push({ header: item.label, key: item.key, width: 18 });
     }
-    columns.push({ header: `${item.label} - Notes`, key: `${item.key}_notes`, width: 24 });
   });
   sheet.columns = columns;
 
@@ -418,10 +422,14 @@ app.get('/api/export/leavers.xlsx', async (_req, res) => {
     };
 
     leaver.checklist.forEach((entry) => {
-      row[`${entry.item_key}_access_removed`] = entry.access_removed || '';
-      row[`${entry.item_key}_evidence_link`] = entry.evidence_link || '';
-      row[`${entry.item_key}_evidence_path`] = entry.evidence_path || '';
-      row[`${entry.item_key}_notes`] = entry.notes || '';
+      if (entry.item_key === HARDWARE_EVIDENCE_KEY) {
+        row[`${entry.item_key}_access_removed`] = entry.access_removed || '';
+        row[`${entry.item_key}_evidence_link`] = entry.evidence_link || '';
+        row[`${entry.item_key}_evidence_path`] = entry.evidence_path || '';
+        row[`${entry.item_key}_notes`] = entry.notes || '';
+      } else {
+        row[entry.item_key] = entry.access_removed || '';
+      }
     });
 
     sheet.addRow(row);
