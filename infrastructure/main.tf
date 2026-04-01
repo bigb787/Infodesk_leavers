@@ -34,6 +34,12 @@ data "aws_caller_identity" "current" {}
 locals {
   project_name  = "infodesk-leavers"
   backup_bucket = coalesce(var.backup_bucket_name, "infodesk-leavers-backups-${data.aws_caller_identity.current.account_id}-${var.aws_region}")
+  evidence_location_prefixes = toset([
+    "evidence/UK/",
+    "evidence/Sweden/",
+    "evidence/US/",
+    "evidence/India/"
+  ])
 
   user_data = <<-EOF
 #!/bin/bash
@@ -259,6 +265,14 @@ resource "aws_s3_bucket_lifecycle_configuration" "backup" {
       noncurrent_days = var.backup_retention_days
     }
   }
+}
+
+resource "aws_s3_object" "evidence_location_prefixes" {
+  for_each = local.evidence_location_prefixes
+
+  bucket  = aws_s3_bucket.backup.id
+  key     = each.value
+  content = ""
 }
 
 resource "aws_instance" "app" {
