@@ -170,6 +170,30 @@ $('#leaver-form').addEventListener('submit', async (ev) => {
 
 $('#clear-btn').addEventListener('click', clearForm);
 
+$('#import-form').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const fileInput = $('#import-file');
+  if (!fileInput.files.length) {
+    alert('Choose an Excel file first.');
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('file', fileInput.files[0]);
+
+  try {
+    const result = await fetchJSON('/api/import/leavers', {
+      method: 'POST',
+      body: formData,
+    });
+    alert(`Imported ${result.imported_count} row(s).`);
+    ev.target.reset();
+    await loadData();
+  } catch (err) {
+    alert(err.message);
+  }
+});
+
 async function onEditLeaver(ev) {
   const id = Number(ev.target.getAttribute('data-id'));
   const leaver = leavers.find((row) => row.id === id);

@@ -11,6 +11,7 @@ const PORT = process.env.PORT || 3000;
 const HARDWARE_EVIDENCE_KEY = 'hardware_evidence_collected';
 const AWS_REGION = process.env.AWS_REGION || 'us-east-1';
 const EVIDENCE_BUCKET = process.env.EVIDENCE_BUCKET || process.env.BACKUP_BUCKET || '';
+const APP_BASE_URL = String(process.env.APP_BASE_URL || '').replace(/\/$/, '');
 
 const uploadsDir = path.join(__dirname, 'uploads', 'evidence');
 fs.mkdirSync(uploadsDir, { recursive: true });
@@ -79,6 +80,50 @@ function ensureBaseLeaverFields(body) {
     department: String(body.department || '').trim() || null,
     line_manager: String(body.line_manager || '').trim() || null,
   };
+}
+
+function buildEvidenceLinkForLeaver(req, leaverId) {
+  const relativeEvidenceLink = `/api/leavers/${leaverId}/evidence/${HARDWARE_EVIDENCE_KEY}/file`;
+  if (APP_BASE_URL) return `${APP_BASE_URL}${relativeEvidenceLink}`;
+  return `${req.protocol}://${req.get('host')}${relativeEvidenceLink}`;
+}
+
+function normalizeImportedChecklist(req, leaverId, row) {
+  const entries = CHECKLIST_ITEMS.map((item) => {
+    const prefix = item.key;
+    const accessRemoved = row[`${prefix}_access_removed`] ?? row[`${item.label} - Access Removed`];
+    const evidenceLinkRaw = row[`${prefix}_evidence_link`] ?? row[`${item.label} - Evidence Link`];
+    const evidencePathRaw = row[`${prefix}_evidence_path`] ?? row[`${item.label} - Evidence File`];
+    const notes = row[`${prefix}_notes`] ?? row[`${item.label} - Notes`];
+
+    let evidenceLink = evidenceLinkRaw ? String(evidenceLinkRaw).trim() : null;
+    let evidencePath = evidencePathRaw ? String(evidencePathRaw).trim() : null;
+
+    if (item.key === HARDWARE_EVIDENCE_KEY) {
+      if (evidencePath && !evidencePath.startsWith('evidence/')) {
+        evidencePath = null;
+      }
+      if (!evidencePath && evidenceLink && evidenceLink.startsWith('evidence/')) {
+        evidencePath = evidenceLink;
+      }
+      if (evidencePath) {
+        evidenceLink = buildEvidenceLinkForLeaver(req, leaverId);
+      }
+    } else {
+      evidenceLink = null;
+      evidencePath = null;
+    }
+
+    return {
+      item_key: item.key,
+      access_removed: accessRemoved == null ? null : String(accessRemoved).trim(),
+      evidence_link: evidenceLink,
+      evidence_path: evidencePath,
+      notes: notes == null ? null : String(notes).trim(),
+    };
+  });
+
+  return entries;
 }
 
 function upsertChecklistEntries(leaverId, entries) {
@@ -230,8 +275,7 @@ app.post('/api/leavers/:id/evidence', upload.single('evidence'), (req, res) => {
   }));
   fs.unlinkSync(req.file.path);
   const evidencePath = objectKey;
-  const relativeEvidenceLink = `/api/leavers/${id}/evidence/${HARDWARE_EVIDENCE_KEY}/file`;
-  const evidenceLink = `${req.protocol}://${req.get('host')}${relativeEvidenceLink}`;
+  const evidenceLink = buildEvidenceLinkForLeaver(req, id);
   upsertChecklistEntries(id, [{
     item_key: itemKey,
     evidence_path: evidencePath,
@@ -245,6 +289,72 @@ app.post('/api/leavers/:id/evidence', upload.single('evidence'), (req, res) => {
     console.error(err);
     res.status(500).json({ error: 'failed to upload evidence to s3' });
   });
+});
+
+app.post('/api/import/leavers', upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'excel file is required' });
+
+  try {
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.readFile(req.file.path);
+    const sheet = workbook.worksheets[0];
+    if (!sheet) return res.status(400).json({ error: 'workbook must contain at least one sheet' });
+
+    const headerRow = sheet.getRow(1);
+    const headers = headerRow.values.slice(1).map((value) => String(value || '').trim());
+    const imported = [];
+
+    const tx = db.transaction(() => {
+      for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber += 1) {
+        const row = sheet.getRow(rowNumber);
+        const values = row.values.slice(1);
+        if (!values.some((value) => String(value || '').trim())) continue;
+
+        const record = {};
+        headers.forEach((header, index) => {
+          record[header] = values[index];
+        });
+
+        const base = ensureBaseLeaverFields({
+          employee_name: record.employee_name ?? record['Employee Name'],
+          date_of_leaving: record.date_of_leaving ?? record['Date of Leaving'],
+          department: record.department ?? record['Department'],
+          line_manager: record.line_manager ?? record['Line Manager'],
+        });
+        if (base.error) {
+          throw new Error(`Row ${rowNumber}: ${base.error}`);
+        }
+
+        const info = db.prepare(`
+          INSERT INTO leavers (employee_name, date_of_leaving, department, line_manager)
+          VALUES (@employee_name, @date_of_leaving, @department, @line_manager)
+        `).run(base);
+        const leaverId = info.lastInsertRowid;
+        const checklist = normalizeImportedChecklist(req, leaverId, record);
+        upsertChecklistEntries(leaverId, checklist);
+        const payload = buildLeaverPayload(getLeaverById(leaverId));
+        insertAuditTrail({
+          entity_table: 'leavers',
+          entity_id: leaverId,
+          action_type: 'CREATE',
+          previous_value: null,
+          new_value: JSON.stringify(payload),
+          changed_by: 'import',
+        });
+        imported.push(payload);
+      }
+    });
+
+    tx();
+    res.json({ ok: true, imported_count: imported.length });
+  } catch (err) {
+    console.error(err);
+    res.status(400).json({ error: err.message || 'failed to import excel file' });
+  } finally {
+    if (req.file?.path && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+  }
 });
 
 app.get('/api/leavers/:id/evidence/:itemKey/file', async (req, res) => {
