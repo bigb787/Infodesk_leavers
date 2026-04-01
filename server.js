@@ -401,8 +401,10 @@ app.get('/api/export/leavers.xlsx', async (_req, res) => {
 
   CHECKLIST_ITEMS.forEach((item) => {
     columns.push({ header: `${item.label} - Access Removed`, key: `${item.key}_access_removed`, width: 18 });
-    columns.push({ header: `${item.label} - Evidence Link`, key: `${item.key}_evidence_link`, width: 26 });
-    columns.push({ header: `${item.label} - Evidence File`, key: `${item.key}_evidence_path`, width: 26 });
+    if (item.key === HARDWARE_EVIDENCE_KEY) {
+      columns.push({ header: `${item.label} - Evidence Link`, key: `${item.key}_evidence_link`, width: 26 });
+      columns.push({ header: `${item.label} - Evidence File`, key: `${item.key}_evidence_path`, width: 26 });
+    }
     columns.push({ header: `${item.label} - Notes`, key: `${item.key}_notes`, width: 24 });
   });
   sheet.columns = columns;
